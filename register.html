@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Event Ticket Booking</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0;
+        }
+        .register-card {
+            max-width: 500px;
+            width: 100%;
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="register-card">
+        <div class="card">
+            <div class="card-body p-5">
+                <h2 class="text-center mb-4">🎫 Event Tickets</h2>
+                <h5 class="text-center mb-4 text-muted">Create your account</h5>
+                
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                
+                <form method="POST" action="/auth/register">
+                    <div class="mb-3">
+                        <label for="full_name" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="full_name" 
+                               name="full_name" placeholder="John Doe"
+                               pattern="[A-Za-z\s]+" title="Only letters and spaces allowed"
+                               minlength="2" maxlength="100">
+                        <small class="text-muted">Letters and spaces only (2-100 characters). Must be unique.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username *</label>
+                        <input type="text" class="form-control" id="username" 
+                               name="username" required autofocus
+                               pattern="[A-Za-z0-9_]+" title="Only letters, numbers, and underscores allowed"
+                               minlength="3" maxlength="30">
+                        <small class="text-muted">3-30 characters. Letters, numbers, and underscores only.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email *</label>
+                        <input type="email" class="form-control" id="email" 
+                               name="email" required>
+                        <small class="text-muted">Must be unique and valid email format.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password *</label>
+                           <input type="password" class="form-control" id="password" 
+                               name="password" required minlength="6"
+                               pattern="(?=.*[^A-Za-z0-9]).{6,}"
+                               title="At least 6 characters with one special symbol">
+                           <small class="text-muted">Minimum 6 characters and include at least one special symbol.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirm Password *</label>
+                           <input type="password" class="form-control" id="confirm_password" 
+                               name="confirm_password" required minlength="6"
+                               pattern="(?=.*[^A-Za-z0-9]).{6,}"
+                               title="At least 6 characters with one special symbol">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg w-100 mb-3">Create Account</button>
+                </form>
+                
+                <hr>
+                
+                <div class="text-center">
+                    <p class="mb-2">Already have an account?</p>
+                    <a href="/auth/login" class="btn btn-outline-secondary w-100">Login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background-color: #f8f9fa; }
+        .stat-card { margin-bottom: 20px; }
+        .queue-section { margin-top: 30px; }
+        .queue-item { border-left: 4px solid #007bff; padding: 10px; margin-bottom: 10px; background: white; }
+        .queue-vip { border-left-color: #ffc107; }
+        .queue-regular { border-left-color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Admin Dashboard</h1>
+            <div>
+                <a href="/admin/export/transactions.csv" class="btn btn-success me-2">
+                    📥 Download Transactions CSV
+                </a>
+                <a href="/admin/export/summary.csv" class="btn btn-info me-2">
+                    📊 Download Summary CSV
+                </a>
+                <button class="btn btn-warning me-2" onclick="resetData()">
+                    🔄 Reset All Data (Keep Users)
+                </button>
+                <button class="btn btn-outline-danger me-2" onclick="completeReset()">
+                    ⚠️ Complete Reset (Delete Everything)
+                </button>
+                <button class="btn btn-danger" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row">
+            <div class="col-md-2">
+                <div class="card stat-card bg-warning text-dark">
+                    <div class="card-body">
+                        <h6 class="card-title">Pending Requests</h6>
+                        <h2 id="pending-count">0</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card stat-card bg-primary text-white">
+                    <div class="card-body">
+                        <h6 class="card-title">Total Revenue</h6>
+                        <h3 id="total-revenue">$0.00</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card stat-card bg-success text-white">
+                    <div class="card-body">
+                        <h6 class="card-title">Completed Orders</h6>
+                        <h3 id="completed-orders">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-info text-white">
+                    <div class="card-body">
+                        <h6 class="card-title">VIP Queue</h6>
+                        <h3 id="vip-queue-count">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card bg-secondary text-white">
+                    <div class="card-body">
+                        <h6 class="card-title">Regular Queue</h6>
+                        <h3 id="regular-queue-count">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Requests -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5>⏳ Pending Ticket Requests (Awaiting Approval)</h5>
+                            <button class="btn btn-success" onclick="processNextTicket()" id="process-next-btn">
+                                ⚡ Process Next Ticket (VIP Priority)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="pending-requests-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tickets Inventory -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h5>Ticket Inventory</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Price</th>
+                                    <th>Available</th>
+                                    <th>Sold</th>
+                                    <th>Info</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tickets-table"></tbody>
+                        </table>
+                        
+                        <!-- Add Inventory Form -->
+                        <div class="mt-3">
+                            <h6>Add/Update Inventory</h6>
+                            <form id="inventory-form" class="row g-3">
+                                <div class="col-12 col-md-3">
+                                    <select class="form-select" id="ticket-type" required>
+                                        <option value="VIP">VIP</option>
+                                        <option value="REGULAR">Regular</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-md-3">
+                                     <input type="number" class="form-control" id="set-quantity"
+                                         placeholder="Set Available Quantity" min="0">
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <input type="number" class="form-control" id="set-price" 
+                                           placeholder="Set Price" step="0.01" min="0">
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <button type="submit" class="btn btn-primary w-100">Update</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queues -->
+        <div class="row queue-section">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <h5>VIP Queue</h5>
+                    </div>
+                    <div class="card-body" id="vip-queue-container"></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5>Regular Queue</h5>
+                    </div>
+                    <div class="card-body" id="regular-queue-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Orders -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5>Recent Orders</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Customer</th>
+                                    <th>Email</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadStats() {
+            try {
+                const response = await fetch('/admin/api/stats');
+                if (response.status === 401) {
+                    window.location.href = '/admin/login';
+                    return;
+                }
+                const data = await response.json();
+
+                // Update statistics
+                document.getElementById('pending-count').textContent = data.pending_count || 0;
+                document.getElementById('total-revenue').textContent = `$${data.total_revenue.toFixed(2)}`;
+                document.getElementById('completed-orders').textContent = data.completed_orders;
+                document.getElementById('vip-queue-count').textContent = data.vip_queue.length;
+                document.getElementById('regular-queue-count').textContent = data.regular_queue.length;
+
+                // Update pending requests
+                const pendingContainer = document.getElementById('pending-requests-container');
+                if (data.pending_orders && data.pending_orders.length > 0) {
+                    // Enable the process next button
+                    document.getElementById('process-next-btn').disabled = false;
+                    
+                    pendingContainer.innerHTML = `
+                        <div class="alert alert-info">
+                            <strong>⚡ Priority Processing:</strong> VIP orders are processed first, followed by mixed orders, then regular orders.
+                            Click "Process Next Ticket" to automatically process the highest priority order.
+                        </div>
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Priority</th>
+                                    <th>Order #</th>
+                                    <th>Customer</th>
+                                    <th>Tickets</th>
+                                    <th>Total</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.pending_orders.map((order, index) => {
+                                    // Determine priority badge based on ticket types
+                                    const hasVIP = order.items.some(item => item.ticket_type === 'VIP');
+                                    const hasRegular = order.items.some(item => item.ticket_type === 'REGULAR');
+                                    let priorityBadge = '';
+                                    let rowClass = '';
+                                    let nextIndicator = '';
+                                    
+                                    if (index === 0) {
+                                        nextIndicator = '<span class="badge bg-success ms-1">← NEXT</span>';
+                                    }
+                                    
+                                    if (hasVIP && hasRegular) {
+                                        priorityBadge = '<span class="badge bg-info">Mixed</span>';
+                                        rowClass = 'table-info';
+                                    } else if (hasVIP) {
+                                        priorityBadge = '<span class="badge bg-warning text-dark">⚡ VIP</span>';
+                                        rowClass = 'table-warning';
+                                    } else {
+                                        priorityBadge = '<span class="badge bg-secondary">Regular</span>';
+                                    }
+                                    
+                                    // Group items by ticket type to avoid duplicates
+                                    const ticketSummary = {};
+                                    order.items.forEach(item => {
+                                        if (ticketSummary[item.ticket_type]) {
+                                            ticketSummary[item.ticket_type] += item.quantity;
+                                        } else {
+                                            ticketSummary[item.ticket_type] = item.quantity;
+                                        }
+                                    });
+                                    
+                                    const ticketsDisplay = Object.entries(ticketSummary)
+                                        .map(([type, qty]) => `${qty}x ${type}`)
+                                        .join(', ');
+                                    
+                                    return `
+                                    <tr class="${rowClass}">
+                                        <td>${priorityBadge}${nextIndicator}</td>
+                                        <td><strong>#${order.id}</strong></td>
+                                        <td>
+                                            ${order.user_name}<br>
+                                            <small class="text-muted">${order.user_email}</small>
+                                        </td>
+                                        <td>${ticketsDisplay}</td>
+                                        <td><strong>$${order.total_amount.toFixed(2)}</strong></td>
+                                        <td><small>${new Date(order.created_at).toLocaleString()}</small></td>
+                                    </tr>
+                                `}).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    // Disable the process next button
+                    document.getElementById('process-next-btn').disabled = true;
+                    pendingContainer.innerHTML = '<p class="text-muted">No pending requests</p>';
+                }
+
+                // Update tickets table
+                const ticketsTable = document.getElementById('tickets-table');
+                ticketsTable.innerHTML = data.tickets.map(ticket => {
+                    const totalTickets = ticket.available + ticket.sold;
+                    return `
+                    <tr>
+                        <td><strong>${ticket.type}</strong></td>
+                        <td>$${ticket.price.toFixed(2)}</td>
+                        <td><span class="badge bg-success">${ticket.available}</span></td>
+                        <td><span class="badge bg-primary">${ticket.sold}</span></td>
+                        <td>
+                            <small>Total: ${totalTickets} | Revenue: $${(ticket.sold * ticket.price).toFixed(2)}</small>
+                        </td>
+                    </tr>
+                `}).join('');
+
+                // Update VIP queue
+                const vipQueueContainer = document.getElementById('vip-queue-container');
+                vipQueueContainer.innerHTML = data.vip_queue.length > 0 
+                    ? data.vip_queue.map(entry => {
+                        if (entry.type === 'order') {
+                            // This is a pending order
+                            const mixedBadge = entry.is_mixed ? '<span class="badge bg-info ms-1">Mixed Order - Also in Regular Queue</span>' : '';
+                            const itemTotal = entry.item_total ? `VIP Subtotal: $${entry.item_total.toFixed(2)}` : '';
+                            return `
+                                <div class="queue-item queue-vip">
+                                    <span class="badge bg-warning text-dark">Pending Order #${entry.id}</span>${mixedBadge}<br>
+                                    <strong>${entry.user_name}</strong> (${entry.user_email})<br>
+                                    <small><strong>VIP Tickets:</strong> ${entry.requested_quantity} | ${itemTotal}</small><br>
+                                    ${entry.is_mixed ? `<small class="text-muted">⚠️ This order contains both VIP and Regular tickets. Total Order: $${entry.order_total.toFixed(2)}</small><br>` : ''}
+                                    <small>Order Date: ${new Date(entry.joined_at).toLocaleString()}</small>
+                                </div>
+                            `;
+                        } else {
+                            // This is a regular queue entry
+                            return `
+                                <div class="queue-item queue-vip">
+                                    <span class="badge bg-info">Queue Entry</span><br>
+                                    <strong>${entry.user_name}</strong> (${entry.user_email})<br>
+                                    <small>Requested: ${entry.requested_quantity} tickets | Joined: ${new Date(entry.joined_at).toLocaleString()}</small>
+                                    <button class="btn btn-sm btn-success float-end" onclick="fulfillQueue(${entry.id})">Fulfill</button>
+                                </div>
+                            `;
+                        }
+                    }).join('')
+                    : '<p class="text-muted">No one in queue</p>';
+
+                // Update Regular queue
+                const regularQueueContainer = document.getElementById('regular-queue-container');
+                regularQueueContainer.innerHTML = data.regular_queue.length > 0
+                    ? data.regular_queue.map(entry => {
+                        if (entry.type === 'order') {
+                            // This is a pending order
+                            const mixedBadge = entry.is_mixed ? '<span class="badge bg-info ms-1">Mixed Order - Also in VIP Queue</span>' : '';
+                            const itemTotal = entry.item_total ? `Regular Subtotal: $${entry.item_total.toFixed(2)}` : '';
+                            return `
+                                <div class="queue-item queue-regular">
+                                    <span class="badge bg-warning text-dark">Pending Order #${entry.id}</span>${mixedBadge}<br>
+                                    <strong>${entry.user_name}</strong> (${entry.user_email})<br>
+                                    <small><strong>Regular Tickets:</strong> ${entry.requested_quantity} | ${itemTotal}</small><br>
+                                    ${entry.is_mixed ? `<small class="text-muted">⚠️ This order contains both VIP and Regular tickets. Total Order: $${entry.order_total.toFixed(2)}</small><br>` : ''}
+                                    <small>Order Date: ${new Date(entry.joined_at).toLocaleString()}</small>
+                                </div>
+                            `;
+                        } else {
+                            // This is a regular queue entry
+                            return `
+                                <div class="queue-item queue-regular">
+                                    <span class="badge bg-info">Queue Entry</span><br>
+                                    <strong>${entry.user_name}</strong> (${entry.user_email})<br>
+                                    <small>Requested: ${entry.requested_quantity} tickets | Joined: ${new Date(entry.joined_at).toLocaleString()}</small>
+                                    <button class="btn btn-sm btn-success float-end" onclick="fulfillQueue(${entry.id})">Fulfill</button>
+                                </div>
+                            `;
+                        }
+                    }).join('')
+                    : '<p class="text-muted">No one in queue</p>';
+
+                // Update recent orders
+                const ordersTable = document.getElementById('orders-table');
+                ordersTable.innerHTML = data.recent_orders.map(order => {
+                    let statusBadge = '';
+                    switch(order.status) {
+                        case 'completed':
+                        case 'approved':
+                            statusBadge = `<span class="badge bg-success">${order.status}</span>`;
+                            break;
+                        case 'pending':
+                            statusBadge = `<span class="badge bg-warning">${order.status}</span>`;
+                            break;
+                        case 'rejected':
+                            statusBadge = `<span class="badge bg-danger">${order.status}</span>`;
+                            break;
+                        case 'cancelled':
+                            statusBadge = `<span class="badge bg-secondary">${order.status}</span>`;
+                            break;
+                        default:
+                            statusBadge = `<span class="badge bg-secondary">${order.status}</span>`;
+                    }
+                    
+                    return `
+                    <tr>
+                        <td>#${order.id}</td>
+                        <td>${order.user_name}</td>
+                        <td>${order.user_email}</td>
+                        <td>$${order.total_amount.toFixed(2)}</td>
+                        <td>${statusBadge}</td>
+                        <td>${new Date(order.created_at).toLocaleString()}</td>
+                    </tr>
+                `}).join('');
+
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function processNextTicket() {
+            try {
+                const response = await fetch('/admin/api/stats');
+                if (response.status === 401) {
+                    window.location.href = '/admin/login';
+                    return;
+                }
+                const data = await response.json();
+                
+                if (!data.pending_orders || data.pending_orders.length === 0) {
+                    alert('No pending orders to process.');
+                    return;
+                }
+                
+                // Get the first order (highest priority due to backend sorting)
+                const nextOrder = data.pending_orders[0];
+                
+                // Confirm processing
+                const hasVIP = nextOrder.items.some(item => item.ticket_type === 'VIP');
+                const hasRegular = nextOrder.items.some(item => item.ticket_type === 'REGULAR');
+                let orderType = hasVIP && hasRegular ? 'Mixed (VIP + Regular)' : hasVIP ? 'VIP' : 'Regular';
+                
+                const confirmMsg = `Process Order #${nextOrder.id}?\n\n` +
+                                  `Type: ${orderType}\n` +
+                                  `Customer: ${nextOrder.user_name}\n` +
+                                  `Tickets: ${nextOrder.items.map(i => `${i.quantity}x ${i.ticket_type}`).join(', ')}\n` +
+                                  `Total: $${nextOrder.total_amount.toFixed(2)}\n\n` +
+                                  `Inventory will be decremented.`;
+                
+                if (!confirm(confirmMsg)) return;
+                
+                // Process the order
+                await processOrder(nextOrder.id);
+                
+            } catch (error) {
+                console.error('Error getting next ticket:', error);
+                alert('Failed to get next ticket.');
+            }
+        }
+
+        async function processOrder(orderId) {
+            // Approve the order
+            if (!confirm('Process and approve this ticket request? Inventory will be decremented.')) return;
+            
+            try {
+                const response = await fetch(`/admin/api/orders/${orderId}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('Order approved successfully!');
+                    loadStats();
+                } else {
+                    // Check if it was auto-rejected due to sold out
+                    if (data.message && data.message.includes('automatically rejected')) {
+                        alert('⚠️ ' + data.message + '\n\nReason: ' + data.error);
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                    loadStats(); // Reload to show the rejected order
+                }
+            } catch (error) {
+                console.error('Error approving order:', error);
+                alert('Failed to approve order.');
+            }
+        }
+
+        async function fulfillQueue(queueId) {
+            try {
+                const response = await fetch(`/admin/api/queue/${queueId}/fulfill`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    alert('Queue entry fulfilled!');
+                    loadStats();
+                }
+            } catch (error) {
+                console.error('Error fulfilling queue:', error);
+            }
+        }
+
+        async function approveOrder(orderId) {
+            // Legacy function - redirects to processOrder
+            processOrder(orderId);
+        }
+
+        document.getElementById('inventory-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const ticketType = document.getElementById('ticket-type').value;
+            const setQuantity = document.getElementById('set-quantity').value;
+            const setPrice = document.getElementById('set-price').value;
+
+            const payload = { ticket_type: ticketType };
+            if (setQuantity !== '') payload.set_quantity = Number(setQuantity);
+            if (setPrice !== '') payload.price = parseFloat(setPrice);
+
+            try {
+                const response = await fetch('/admin/api/tickets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    alert('Inventory updated!');
+                    document.getElementById('inventory-form').reset();
+                    loadStats();
+                } else {
+                    const error = await response.json();
+                    alert('Error: ' + error.error);
+                }
+            } catch (error) {
+                console.error('Error updating inventory:', error);
+            }
+        });
+
+        async function logout() {
+            try {
+                await fetch('/admin/logout', { method: 'POST' });
+                window.location.href = '/admin/login';
+            } catch (error) {
+                console.error('Error logging out:', error);
+            }
+        }
+
+        async function resetData() {
+            const confirmed = confirm(
+                '⚠️ WARNING: This will delete ALL:\n\n' +
+                '• Orders (pending, approved, rejected, cancelled)\n' +
+                '• Queue entries\n' +
+                '• Ticket inventory (reset to defaults)\n\n' +
+                '✅ User accounts will be PRESERVED\n\n' +
+                'Are you sure you want to continue?'
+            );
+            
+            if (!confirmed) return;
+            
+            // Second confirmation
+            const doubleCheck = confirm('Are you ABSOLUTELY sure? This cannot be undone!');
+            if (!doubleCheck) return;
+            
+            try {
+                const response = await fetch('/admin/api/reset-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('✅ ' + data.message);
+                    loadStats(); // Reload the dashboard
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error resetting data:', error);
+                alert('Failed to reset data. Please try again.');
+            }
+        }
+
+        async function completeReset() {
+            const confirmed = confirm(
+                '🔴 DANGER: COMPLETE DATABASE RESET\n\n' +
+                'This will DELETE EVERYTHING:\n\n' +
+                '• ALL user accounts\n' +
+                '• ALL orders\n' +
+                '• ALL queue entries\n' +
+                '• ALL ticket data\n\n' +
+                '⚠️ YOU WILL BE LOGGED OUT!\n\n' +
+                'Are you ABSOLUTELY sure?'
+            );
+            
+            if (!confirmed) return;
+            
+            // Triple confirmation for complete reset
+            const finalCheck = prompt('Type "DELETE EVERYTHING" to confirm:');
+            if (finalCheck !== 'DELETE EVERYTHING') {
+                alert('Reset cancelled.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/admin/api/complete-reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('✅ ' + data.message);
+                    window.location.href = '/auth/login';
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error with complete reset:', error);
+                alert('Failed to reset. Please try again.');
+            }
+        }
+
+        // Load stats on page load and refresh every 10 seconds
+        loadStats();
+        setInterval(loadStats, 10000);
+    </script>
+</body>
+</html>

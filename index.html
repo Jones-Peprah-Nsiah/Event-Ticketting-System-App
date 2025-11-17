@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Ticket Booking</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background-color: #f8f9fa; }
+        .ticket-card { margin: 20px 0; }
+        .badge-vip { background-color: #ffc107; color: #000; }
+        .badge-regular { background-color: #6c757d; }
+        #cart { position: sticky; top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Event Ticket Booking</h1>
+            <div>
+                <span class="me-3">Welcome, <strong id="username"></strong></span>
+                <a href="/auth/logout" class="btn btn-outline-danger">Logout</a>
+            </div>
+        </div>
+        <div class="alert alert-info">
+            <strong>Note:</strong> Select as many tickets as you need while inventory is available. Every request still requires admin approval.
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <h3>Available Tickets</h3>
+                <div id="sold-out-alert"></div>
+                <div id="tickets-container"></div>
+            </div>
+
+            <div class="col-md-4">
+                <div id="cart" class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5>Your Selection</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="cart-items"></div>
+                        <hr>
+                        <div class="d-flex justify-content-between">
+                            <strong>Total Tickets:</strong>
+                            <span id="total-tickets">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <strong>Total Price:</strong>
+                            <span id="total-price">$0.00</span>
+                        </div>
+                        <hr>
+                        <form id="checkout-form">
+                            <button type="submit" class="btn btn-success w-100" id="checkout-btn">
+                                Submit Ticket Request
+                            </button>
+                            <small class="text-muted d-block mt-2 text-center">
+                                Your request will be reviewed by an admin
+                            </small>
+                        </form>
+                        <div id="order-confirmation" class="alert alert-success mt-3" style="display: none;"></div>
+                        <div id="error-message" class="alert alert-danger mt-3" style="display: none;"></div>
+                        
+                        <hr class="mt-4">
+                        <h6>Your Orders</h6>
+                        <div id="my-orders" class="mt-2">
+                            <small class="text-muted">Loading...</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tickets = [];
+        let cart = {};
+
+        // Load current user info
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/auth/api/me');
+                if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                if (response.ok) {
+                    const user = await response.json();
+                    document.getElementById('username').textContent = user.username;
+                }
+            } catch (error) {
+                console.error('Error loading user info:', error);
+                window.location.href = '/auth/login';
+            }
+        }
+
+        // Load user's orders
+        async function loadMyOrders() {
+            try {
+                const response = await fetch('/auth/api/my-orders');
+                if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                if (response.ok) {
+                    const data = await response.json();
+                    const ordersContainer = document.getElementById('my-orders');
+                    
+                    if (data.orders.length === 0) {
+                        ordersContainer.innerHTML = '<small class="text-muted">No orders yet</small>';
+                            // Hide any stale success/cancel messages when no orders remain
+                            const confirmationBanner = document.getElementById('order-confirmation');
+                            const errorBanner = document.getElementById('error-message');
+                            if (confirmationBanner) confirmationBanner.style.display = 'none';
+                            if (errorBanner) errorBanner.style.display = 'none';
+                        return;
+                    }
+                    
+                    ordersContainer.innerHTML = data.orders.slice(0, 3).map(order => {
+                        const statusColor = {
+                            'pending': 'warning',
+                            'approved': 'success',
+                            'rejected': 'danger',
+                            'completed': 'success',
+                            'cancelled': 'secondary'
+                        }[order.status] || 'secondary';
+                        
+                        // Show cancel button only for approved/completed orders
+                        const canCancel = ['approved', 'completed'].includes(order.status);
+                        
+                        // Show receipt button only for approved/completed orders
+                        const canViewReceipt = ['approved', 'completed'].includes(order.status);
+                        
+                        return `
+                            <div class="card mb-2">
+                                <div class="card-body p-2">
+                                    <small>
+                                        <strong>Order #${order.id}</strong>
+                                        <span class="badge bg-${statusColor} float-end">${order.status}</span><br>
+                                        $${order.total_amount.toFixed(2)} - ${order.items.map(i => `${i.quantity}x ${i.ticket_type}`).join(', ')}
+                                        ${order.admin_notes ? `<br><em class="text-muted">${order.admin_notes}</em>` : ''}
+                                        ${canViewReceipt ? `<br><a href="/api/orders/${order.id}/receipt" target="_blank" class="btn btn-sm btn-info mt-1 w-100">📄 View Receipt</a>` : ''}
+                                        ${canCancel ? `<br><button class="btn btn-sm btn-danger mt-1 w-100" onclick="cancelOrder(${order.id})">Cancel & Refund</button>` : ''}
+                                    </small>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (error) {
+                console.error('Error loading orders:', error);
+            }
+        }
+
+        // Load available tickets
+        async function loadTickets() {
+            try {
+                const response = await fetch('/api/tickets');
+                if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                    return;
+                }
+                const data = await response.json();
+                tickets = data.tickets;
+                renderTickets();
+                
+                // Check if all tickets are sold out and show alert
+                const allSoldOut = tickets.every(ticket => ticket.available === 0);
+                const anySoldOut = tickets.some(ticket => ticket.available === 0);
+                
+                const soldOutAlert = document.getElementById('sold-out-alert');
+                
+                if (allSoldOut) {
+                    soldOutAlert.innerHTML = `
+                        <div class="alert alert-danger">
+                            <strong>⚠️ SOLD OUT!</strong> All tickets are currently unavailable. Please check back later or contact support.
+                        </div>
+                    `;
+                } else if (anySoldOut) {
+                    const soldOutTypes = tickets.filter(t => t.available === 0).map(t => t.type).join(', ');
+                    soldOutAlert.innerHTML = `
+                        <div class="alert alert-warning">
+                            <strong>⚠️ Limited Availability!</strong> ${soldOutTypes} tickets are sold out. You can still select from available types.
+                        </div>
+                    `;
+                } else {
+                    soldOutAlert.innerHTML = '';
+                }
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+            }
+        }
+
+        function renderTickets() {
+            const container = document.getElementById('tickets-container');
+            container.innerHTML = tickets.map(ticket => {
+                const isSoldOut = ticket.available === 0;
+                return `
+                <div class="card ticket-card ${isSoldOut ? 'border-danger' : ''}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="card-title">
+                                    ${ticket.type} Ticket
+                                    <span class="badge ${ticket.type === 'VIP' ? 'badge-vip' : 'badge-regular'}">
+                                        ${ticket.type}
+                                    </span>
+                                    ${isSoldOut ? '<span class="badge bg-danger ms-2">SOLD OUT</span>' : ''}
+                                </h5>
+                                <p class="card-text">
+                                    <strong>Price:</strong> $${ticket.price.toFixed(2)}<br>
+                                    <strong>Available:</strong> ${ticket.available}
+                                    ${isSoldOut ? '<br><span class="text-danger"><strong>⚠️ No tickets available. Join the queue or check back later.</strong></span>' : ''}
+                                </p>
+                            </div>
+                            <div>
+                                ${!isSoldOut ? `
+                                <div class="input-group" style="width: 150px;">
+                                    <button class="btn btn-outline-secondary" onclick="updateCart(${ticket.id}, -1)">-</button>
+                                     <input type="number" class="form-control text-center" 
+                                         id="qty-${ticket.id}" value="0" min="0" readonly>
+                                    <button class="btn btn-outline-secondary" onclick="updateCart(${ticket.id}, 1)">+</button>
+                                </div>
+                                ` : `
+                                <div class="text-center">
+                                    <button class="btn btn-secondary" disabled style="width: 150px;">
+                                        Sold Out
+                                    </button>
+                                </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        function updateCart(ticketId, change) {
+            const ticket = tickets.find(t => t.id === ticketId);
+            if (!ticket) return;
+
+            const currentQty = cart[ticketId] || 0;
+            const newQty = Math.max(0, Math.min(ticket.available, currentQty + change));
+
+            // Check total ticket limit (5 max)
+            cart[ticketId] = newQty;
+            if (newQty === 0) delete cart[ticketId];
+
+            document.getElementById(`qty-${ticketId}`).value = newQty;
+            renderCart();
+        }
+
+        function renderCart() {
+            const cartItems = document.getElementById('cart-items');
+            const totalTicketsEl = document.getElementById('total-tickets');
+            const totalPriceEl = document.getElementById('total-price');
+
+            let totalTickets = 0;
+            let totalPrice = 0;
+
+            const items = Object.entries(cart).map(([ticketId, qty]) => {
+                const ticket = tickets.find(t => t.id == ticketId);
+                if (!ticket) return '';
+                
+                totalTickets += qty;
+                totalPrice += ticket.price * qty;
+
+                return `
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>${ticket.type} x${qty}</span>
+                        <span>$${(ticket.price * qty).toFixed(2)}</span>
+                    </div>
+                `;
+            }).join('');
+
+            cartItems.innerHTML = items || '<p class="text-muted">No tickets selected</p>';
+            totalTicketsEl.textContent = totalTickets;
+            totalPriceEl.textContent = `$${totalPrice.toFixed(2)}`;
+
+            document.getElementById('checkout-btn').disabled = totalTickets === 0;
+        }
+
+        document.getElementById('checkout-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Disable button to prevent double-submission
+            const submitBtn = document.getElementById('checkout-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processing...';
+            
+            const items = Object.entries(cart).map(([ticketId, quantity]) => ({
+                ticket_id: parseInt(ticketId),
+                quantity: quantity
+            }));
+
+            try {
+                // Create order (now requires authentication)
+                const orderResponse = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items: items })
+                });
+
+                // Check if unauthorized
+                if (orderResponse.status === 401) {
+                    alert('Session expired. Please login again.');
+                    window.location.href = '/auth/login';
+                    return;
+                }
+
+                if (!orderResponse.ok) {
+                    const error = await orderResponse.json();
+                    throw new Error(error.error);
+                }
+
+                const orderData = await orderResponse.json();
+
+                // Show success message
+                document.getElementById('order-confirmation').innerHTML = `
+                    <strong>Success!</strong> Your ticket request (#${orderData.order.id}) has been submitted.<br>
+                    <small>Status: Awaiting admin approval</small>
+                `;
+                document.getElementById('order-confirmation').style.display = 'block';
+                document.getElementById('error-message').style.display = 'none';
+
+                // Reset cart
+                cart = {};
+                loadTickets();
+                renderCart();
+                loadMyOrders();
+
+            } catch (error) {
+                document.getElementById('error-message').textContent = error.message;
+                document.getElementById('error-message').style.display = 'block';
+                document.getElementById('order-confirmation').style.display = 'none';
+            } finally {
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Ticket Request';
+            }
+        });
+
+        // Load on page load
+        loadUserInfo();
+        loadTickets();
+        loadMyOrders();
+        setInterval(loadMyOrders, 15000); // Refresh orders every 15 seconds
+
+        // Cancel order function
+        async function cancelOrder(orderId) {
+            if (!confirm('Are you sure you want to cancel this order? Your tickets will be refunded and returned to inventory.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/orders/${orderId}/cancel`, {
+                    method: 'POST'
+                });
+
+                if (response.status === 401) {
+                    alert('Session expired. Please login again.');
+                    window.location.href = '/auth/login';
+                    return;
+                }
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert('Error: ' + error.error);
+                    return;
+                }
+
+                const data = await response.json();
+                alert(data.message);
+                
+                // Reload tickets and orders
+                loadTickets();
+                loadMyOrders();
+            } catch (error) {
+                console.error('Error cancelling order:', error);
+                alert('Failed to cancel order. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>
